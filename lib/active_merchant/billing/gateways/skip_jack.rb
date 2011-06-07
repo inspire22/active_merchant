@@ -220,6 +220,8 @@ module ActiveMerchant #:nodoc:
       # ==== Options
       #
       # * <tt>:force_settlement</tt> -- Force the settlement to occur as soon as possible. This option is not supported by other gateways. See the SkipJack API reference for more details
+      # * <tt>:skip_avs</tt> -- Capture even if AVS fails
+      # * <tt>:skip_ccv</tt> -- Allow empty CCV2
       def capture(money, authorization, options = {})
         post = { }
         add_status_action(post, 'SETTLE')
@@ -369,11 +371,12 @@ module ActiveMerchant #:nodoc:
         post[:CustomerCode] = options[:customer].to_s.slice(0, 17)
         post[:InvoiceNumber] = options[:invoice]
         post[:OrderDescription] = options[:description]
-        
+        skip_avs = '1' if options[:skip_avs]
+                
         if order_items = options[:items]
-          post[:OrderString] = order_items.collect { |item| "#{item[:sku]}~#{item[:description].tr('~','-')}~#{item[:declared_value]}~#{item[:quantity]}~#{item[:taxable]}~~~~~~~~#{item[:tax_rate]}~||"}.join
+          post[:OrderString] = order_items.collect { |item| "#{item[:sku]}~#{item[:description].tr('~','-')}~#{item[:declared_value]}~#{item[:quantity]}~#{item[:taxable]}~~~~~~~~#{item[:tax_rate]}~||#{skip_avs}"}.join
         else
-          post[:OrderString] = '1~None~0.00~0~N~||'
+          post[:OrderString] = '1~None~0.00~0~N~||#{skip_avs}'
         end
       end
 
@@ -381,7 +384,9 @@ module ActiveMerchant #:nodoc:
         post[:AccountNumber]  = creditcard.number
         post[:Month] = creditcard.month
         post[:Year] = creditcard.year
-        post[:CVV2] = creditcard.verification_value if creditcard.verification_value?
+        # they require CCV or CCV2, but don't check CCV if it's all you pass.  Strange, I know
+        post[:CCV] = (!creditcard.verification_value || creditcard.verification_value == '') ? '123' : creditcard.verification_value if options[:skip_ccv] 
+        post[:CVV2] = creditcard.verification_value if creditcard.verification_value? && !options[:skip_ccv]
         post[:SJName] = creditcard.name
       end
 
